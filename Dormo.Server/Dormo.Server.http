@@ -1,0 +1,6 @@
+@Dormo.Server_HostAddress = http://localhost:5150
+
+GET {{Dormo.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
