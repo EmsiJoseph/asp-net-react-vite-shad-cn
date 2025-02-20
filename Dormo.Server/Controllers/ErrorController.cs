@@ -4,9 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace Dormo.Server.Controllers;
 
 [ApiController]
+[Route("[controller]")]
 public class ErrorController : ControllerBase
 {
-    [Route("/error")]
+    [HttpGet("")]
     public IActionResult HandleError()
     {
         var context = HttpContext.Features.Get<IExceptionHandlerFeature>();

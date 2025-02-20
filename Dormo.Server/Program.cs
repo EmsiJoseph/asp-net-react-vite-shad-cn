@@ -1,39 +1,118 @@
+using System.Text.Json;
+using System.Threading.RateLimiting;
+using Asp.Versioning;
+using Dormo.Server.Constants;
+using Dormo.Server.Data;
+using Dormo.Server.Middleware;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
-namespace Dormo.Server
-{
-    public class Program
+var builder = WebApplication.CreateBuilder(args);
+var configuration = builder.Configuration;
+
+// Core Services
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddOutputCache();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.WriteIndented = true;
+    });
 
-            // Add services to the container.
-
-            builder.Services.AddControllers();
-            // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-            builder.Services.AddOpenApi();
-
-            var app = builder.Build();
-
-            app.UseDefaultFiles();
-            app.MapStaticAssets();
-
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.MapOpenApi();
-            }
-
-            app.UseHttpsRedirection();
-
-            app.UseAuthorization();
+// Rate Limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddSlidingWindowLimiter("PerUserPolicy", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 100;
+        opt.QueueLimit = 10;
+        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+    });
+});
 
 
-            app.MapControllers();
+// Database
+string? connection = builder.Environment.IsDevelopment()
+    ? builder.Configuration.GetConnectionString("LocalDefaultConnection")
+    : configuration["ConnectionStrings:ProdDefaultConnection"];
+if (string.IsNullOrEmpty(connection))
+    throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-            app.MapFallbackToFile("/index.html");
+builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connection));
 
-            app.Run();
-        }
-    }
+// Add Identity
+builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
+    {
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 6;
+    })
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+// Configure cookie authentication
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/api/login";
+    options.LogoutPath = "/api/logout";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.ExpireTimeSpan = TimeSpan.FromHours(1);
+});
+
+builder.Services.AddAuthorization();
+
+// API Versioning
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(ApiVersionConstants.MajorVersion, ApiVersionConstants.MinorVersion);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+    options.ApiVersionReader = ApiVersionReader.Combine(
+        new UrlSegmentApiVersionReader(),
+        new HeaderApiVersionReader(ApiVersionConstants.HeaderName),
+        new QueryStringApiVersionReader(ApiVersionConstants.QueryStringParam));
+});
+
+
+// Add services to the container.
+
+// OpenAPI
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+
+app.UseDefaultFiles();
+app.MapStaticAssets();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.MapScalarApiReference();
+    app.MapOpenApi();
+    app.UseExceptionHandler("/Error");
 }
+else
+{
+    app.UseExceptionHandler("/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.UseOutputCache();
+app.UseRateLimiter();
+app.UseMiddleware<GlobalExceptionHandler>();
+
+
+app.MapControllers();
+
+app.MapFallbackToFile("/index.html");
+
+app.Run();

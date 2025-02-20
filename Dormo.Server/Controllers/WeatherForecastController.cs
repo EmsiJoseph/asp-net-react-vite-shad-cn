@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace Dormo.Server.Controllers
-{
+namespace Dormo.Server.Controllers;
+
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/v1.0/[controller]")]
     public class WeatherForecastController : ControllerBase
     {
         private static readonly string[] Summaries = new[]
@@ -30,4 +30,4 @@ namespace Dormo.Server.Controllers
             .ToArray();
         }
     }
-}
+

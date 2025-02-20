@@ -1,8 +1,6 @@
+namespace Dormo.Server.Exceptions;
 
-namespace backend.Exceptions
+public class ServiceException(string message, int statusCode = 500) : Exception(message)
 {
-    public class ServiceException(string message, int statusCode = 500) : Exception(message)
-    {
-        public int StatusCode { get; } = statusCode;
-    }
+    public int StatusCode { get; } = statusCode;
 }
